@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+*.nvda-addon
+globalPlugins/youtubeDownloader/bin/
+.vscode/
+*.zip
