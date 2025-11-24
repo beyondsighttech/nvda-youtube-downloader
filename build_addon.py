@@ -1,9 +1,19 @@
 import os
 import zipfile
 
+def get_version_from_manifest(manifest_path):
+    with open(manifest_path, 'r', encoding='utf-8') as f:
+        for line in f:
+            if line.startswith('version'):
+                return line.split('=')[1].strip()
+    return "0.0.0"
+
 def create_addon_package():
     base_dir = os.path.dirname(os.path.abspath(__file__))
-    output_filename = os.path.join(base_dir, "youtubeDownloader-1.0.0.nvda-addon")
+    manifest_path = os.path.join(base_dir, "manifest.ini")
+    version = get_version_from_manifest(manifest_path)
+    
+    output_filename = os.path.join(base_dir, f"youtubeDownloader-{version}.nvda-addon")
     
     # Files/Dirs to include
     includes = ['manifest.ini', 'globalPlugins', 'doc']
