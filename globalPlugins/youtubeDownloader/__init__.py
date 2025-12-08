@@ -55,6 +55,29 @@ class YouTubeDownloaderSettingsPanel(settingsDialogs.SettingsPanel):
 		b.Bind(wx.EVT_BUTTON, self.onBrowse)
 		sHelper.addItem(b)
 		
+		# Update Check
+		b_update = wx.Button(self, label=_("Check for Updates"))
+		b_update.Bind(wx.EVT_BUTTON, self.onCheckUpdates)
+		sHelper.addItem(b_update)
+		
+	def onCheckUpdates(self, event):
+		# We need to run this in a thread to not block GUI
+		threading.Thread(target=self._run_manual_update).start()
+		
+	def _run_manual_update(self):
+		# Get the plugin instance
+		plugin = None
+		for p in globalPluginHandler.runningPlugins:
+			if isinstance(p, GlobalPlugin):
+				plugin = p
+				break
+				
+		if plugin:
+			result = plugin._silent_update(manual=True)
+			wx.CallAfter(wx.MessageBox, result, _("Update Check"), wx.OK | wx.ICON_INFORMATION)
+		else:
+			wx.CallAfter(wx.MessageBox, "Plugin instance not found.", _("Error"), wx.OK | wx.ICON_ERROR)
+
 	def onBrowse(self, event):
 		dlg = wx.DirDialog(self, _("Choose Download Folder"), self.pathEntry.Value)
 		if dlg.ShowModal() == wx.ID_OK:
@@ -186,9 +209,10 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		except Exception as e:
 			logging.error(f"Failed to load state: {e}")
 
-	def _silent_update(self):
-		"""Runs yt-dlp -U to update the binary silently."""
+	def _silent_update(self, manual=False):
+		"""Runs yt-dlp -U to update the binary."""
 		self.is_updating = True
+		status_msg = "Update check failed."
 		try:
 			yt_dlp_path = downloader.get_yt_dlp_path()
 			if os.path.exists(yt_dlp_path):
@@ -196,14 +220,42 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				# Hide console
 				startupinfo = subprocess.STARTUPINFO()
 				startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-				subprocess.run([yt_dlp_path, "-U"], startupinfo=startupinfo, check=False)
-				logging.info("yt-dlp update check complete.")
+				
+				# Capture output
+				proc = subprocess.run(
+					[yt_dlp_path, "-U"], 
+					capture_output=True, 
+					text=True, 
+					startupinfo=startupinfo, 
+					check=False,
+					encoding='utf-8', 
+					errors='replace'
+				)
+				
+				output = proc.stdout + "\n" + proc.stderr
+				logging.info(f"Update Output: {output}")
+				
+				if "up-to-date" in output or "is up to date" in output:
+					status_msg = "yt-dlp is up to date."
+				elif "Updating to version" in output:
+					# Parse version if possible
+					try:
+						ver = output.split("Updating to version")[1].split()[0]
+						status_msg = f"Updated yt-dlp to version {ver}."
+					except:
+						status_msg = "Updated yt-dlp to latest version."
+				else:
+					status_msg = f"Update Info: {output.strip()[:100]}..." # Truncate for msg box
+					
 		except Exception as e:
 			logging.error(f"Auto-update failed: {e}")
+			status_msg = f"Update failed: {str(e)}"
 		finally:
 			self.is_updating = False
 			# Process queue in case downloads were added while updating
 			wx.CallAfter(self._process_queue)
+			
+		return status_msg
 
 	scriptCategory = _("YouTube Downloader")
 
