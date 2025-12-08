@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="hi">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NVDA YouTube Downloader</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            line-height: 1.6;
+            padding: 20px;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        h1,
+        h2 {
+            color: #2c3e50;
+        }
+
+        code {
+            background-color: #f4f4f4;
+            padding: 2px 5px;
+            border-radius: 3px;
+        }
+
+        ul {
+            padding-left: 20px;
+        }
+
+        li {
+            margin-bottom: 5px;
+        }
+
+        a {
+            color: #3498db;
+            text-decoration: none;
+        }
+
+        a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+
+<body>
+
+    <h1>NVDA YouTube Downloader</h1>
+
+    <p>YouTube से सीधे वीडियो और ऑडियो डाउनलोड करने के लिए एक शक्तिशाली और सुलभ NVDA एडऑन</p>
+
+    <h2>विशेषताएँ (Features)</h2>
+    <ul>
+        <li><strong>प्रारूप चयन (Format Selection)</strong>: <strong>MP3 (ऑडियो)</strong> या <strong>MP4
+                (वीडियो)</strong> के रूप में डाउनलोड करें।</li>
+        <li><strong>गुणवत्ता नियंत्रण (Quality Control)</strong>: विभिन्न गुणवत्ता विकल्पों में से चुनें (जैसे, ऑडियो के
+            लिए 320kbps, वीडियो के लिए 1080p)।</li>
+        <li><strong>ट्रिमिंग (Trimming)</strong>: प्रारंभ और समाप्ति समय निर्दिष्ट करके वीडियो का केवल एक विशिष्ट भाग
+            डाउनलोड करें (प्लेलिस्ट के लिए अक्षम)।</li>
+        <li><strong>उन्नत प्लेलिस्ट समर्थन (Advanced Playlist Support)</strong>: स्वचालित रूप से प्लेलिस्ट का पता लगाता
+            है, आपको डाउनलोड करने के लिए <strong>विशिष्ट वीडियो चुनने</strong> की अनुमति देता है, और उन्हें एक समर्पित
+            फ़ोल्डर में सहेजता है।</li>
+        <li><strong>स्मार्ट डिटेक्शन (Smart Detection)</strong>: उन लिंक को समझदारी से संभालता है जिनमें वीडियो और
+            प्लेलिस्ट आईडी दोनों होते हैं, आपको विकल्प देते हैं।</li>
+        <li><strong>बैकग्राउंड डाउनलोड (Background Downloads)</strong>: डाउनलोड बैकग्राउंड में जारी रहते हैं, जिससे आप
+            बिना किसी रुकावट के NVDA का उपयोग कर सकते हैं।</li>
+        <li><strong>कतार प्रणाली (Queue System)</strong>: कतार में कई डाउनलोड जोड़ें और उन्हें आसानी से प्रबंधित करें।
+        </li>
+        <li><strong>पुनः प्रयास समर्थन (Retry Support)</strong>: रुके हुए या बाधित डाउनलोड को आसानी से पुनः प्रयास करें।
+        </li>
+    </ul>
+
+    <h2>उपयोग (Usage)</h2>
+
+    <ol>
+        <li><strong>डाउनलोडर खोलें (Open the Downloader)</strong>:
+            <ul>
+                <li><code>NVDA+Shift+Y</code> दबाएं (डिफ़ॉल्ट शॉर्टकट)।</li>
+                <li>या <strong>NVDA मेनू -> टूल्स -> YouTube डाउनलोडर...</strong> पर जाएं।</li>
+                <li><em>नोट</em>: शॉर्टकट को <strong>NVDA मेनू -> प्राथमिकताएं -> इनपुट जेस्चर -> YouTube
+                        डाउनलोडर</strong> में अनुकूलित किया जा सकता है।</li>
+            </ul>
+        </li>
+        <li><strong>URL दर्ज करें (Enter URL)</strong>:
+            <ul>
+                <li>एडऑन स्वचालित रूप से आपके क्लिपबोर्ड से URL प्राप्त करने का प्रयास करता है।</li>
+                <li>यदि नहीं, तो YouTube वीडियो या प्लेलिस्ट लिंक को "YouTube वीडियो लिंक या प्लेलिस्ट लिंक दर्ज करें"
+                    फ़ील्ड में पेस्ट करें।</li>
+                <li><em>नोट</em>: यदि आप किसी प्लेलिस्ट के अंदर किसी वीडियो का लिंक पेस्ट करते हैं, तो आपसे पूछा जाएगा
+                    कि क्या आप पूरी प्लेलिस्ट डाउनलोड करना चाहते हैं या केवल वीडियो।</li>
+            </ul>
+        </li>
+        <li><strong>विकल्प चुनें (Select Options)</strong>:
+            <ul>
+                <li>अपना वांछित <strong>प्रारूप (Format)</strong> चुनें (MP3 या MP4)।</li>
+                <li><strong>गुणवत्ता (Quality)</strong> चुनें।</li>
+                <li>(वैकल्पिक) वीडियो को ट्रिम करने के लिए <strong>प्रारंभ (Start)</strong> और
+                    <strong>समाप्ति
+                        (End)</strong> समय (HH:MM:SS) दर्ज करें (केवल एकल वीडियो)।
+                </li>
+            </ul>
+        </li>
+        <li><strong>डाउनलोड प्रबंधित करें (Manage Downloads)</strong>:
+            <ul>
+                <li><strong>"डाउनलोड कतार में जोड़ें (Add to Download Queue)"</strong> पर क्लिक करें।</li>
+                <li><strong>प्लेलिस्ट के लिए</strong>: सभी वीडियो सूचीबद्ध करते हुए एक नई विंडो खुलेगी।
+                    जिन्हें आप चाहते हैं उन्हें चेक करें (या "सभी चुनें") और "चयनित डाउनलोड करें" पर क्लिक
+                    करें।</li>
+                <li>"सक्रिय डाउनलोड (Active Downloads)" सूची में प्रगति की निगरानी करें।</li>
+                <li>डाउनलोड को रद्द करने और हटाने के लिए <strong>Stop</strong> बटन का उपयोग करें।</li>
+                <li>विफल या बाधित डाउनलोड को फिर से शुरू करने के लिए <strong>Retry Download</strong> बटन का
+                    उपयोग करें।</li>
+            </ul>
+        </li>
+    </ol>
+
+    <h2>प्रतिक्रिया और समर्थन (Feedback & Support)</h2>
+    <p>मैं आपकी प्रतिक्रिया और सुझावों को महत्व देता हूं! यदि आपको कोई समस्या आती है या नई सुविधाओं के लिए
+        विचार हैं, तो कृपया संपर्क करें:</p>
+    <ul>
+        <li><strong>टेलीग्राम (Telegram)</strong>: <a href="https://t.me/thenebuladrift">@thenebuladrift</a>
+        </li>
+        <li><strong>ईमेल (Email)</strong>: <a href="mailto:aakashshah921@zohomail.in">aakashshah921@zohomail.in</a></li>
+    </ul>
+
+    <hr>
+    <p><em>NVDA समुदाय के लिए ❤️ के साथ बनाया गया।</em></p>
+
+</body>
+
+</html>
