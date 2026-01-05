@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NVDA YouTube Downloader</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            line-height: 1.6;
+            padding: 20px;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        h1,
+        h2 {
+            color: #2c3e50;
+        }
+
+        code {
+            background-color: #f4f4f4;
+            padding: 2px 5px;
+            border-radius: 3px;
+        }
+
+        ul {
+            padding-left: 20px;
+        }
+
+        li {
+            margin-bottom: 5px;
+        }
+
+        a {
+            color: #3498db;
+            text-decoration: none;
+        }
+
+        a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+
+<body>
+
+    <h1>NVDA YouTube Downloader</h1>
+
+    <p>A powerful and accessible NVDA addon to download videos and audio from YouTube directly </p>
+
+    <h2>Features</h2>
+    <ul>
+        <li><strong>Format Selection</strong>: Download as <strong>MP3 (Audio)</strong> or <strong>MP4 (Video)</strong>.
+        </li>
+        <li><strong>Quality Control</strong>: Choose from various quality options (e.g., 320kbps for audio, 1080p for
+            video).</li>
+        <li><strong>Trimming</strong>: Download only a specific part of a video by specifying start and end times
+            (Format: MM:SS or Seconds).</li>
+        <li><strong>SponsorBlock Integration</strong>: Automatically skip non-music sections like sponsors, intros, and outros (Enable in Settings).</li>
+        <li><strong>Metadata Embedding</strong>: Automatically adds Artist, Title, and Chapter information to downloaded files (Enable in Settings).</li>
+        <li><strong>Advanced Playlist Support</strong>: Automatically detects playlists, allows you to <strong>select
+                specific videos</strong> to download, and saves them in a dedicated folder.</li>
+        <li><strong>Smart Detection</strong>: Intelligently handles links that contain both video and playlist IDs,
+            giving you the choice.</li>
+        <li><strong>Background Downloads</strong>: Downloads continue in the background, allowing you to use NVDA
+            without interruption.</li>
+        <li><strong>Queue System</strong>: Add multiple downloads to the queue and manage them easily.</li>
+        <li><strong>Retry Support</strong>: Easily retry downloads that were stopped or interrupted.</li>
+    </ul>
+
+    <h2>Usage</h2>
+
+    <ol>
+        <li><strong>Open the Downloader</strong>:
+            <ul>
+                <li>Press <code>NVDA+Shift+Y</code> (default shortcut).</li>
+                <li>Or go to <strong>NVDA Menu -> Tools -> YouTube Downloader...</strong></li>
+                <li><em>Note</em>: The shortcut can be customized in <strong>NVDA Menu -> Preferences -> Input Gestures
+                        -> YouTube Downloader</strong>.</li>
+            </ul>
+        </li>
+        <li><strong>Enter URL</strong>:
+            <ul>
+                <li>The addon attempts to automatically grab the URL from your clipboard.</li>
+                <li>If not, paste the YouTube video or playlist link into the "Enter YouTube video link or playlist
+                    link" field.</li>
+                <li><em>Note</em>: If you paste a link to a video inside a playlist, you will be asked if you want to
+                    download the whole playlist or just the video.</li>
+            </ul>
+        </li>
+        <li><strong>Select Options</strong>:
+            <ul>
+                <li>Choose your desired <strong>Format</strong> (MP3 or MP4).</li>
+                <li>Select the <strong>Quality</strong>.</li>
+                <li>(Optional) Enter <strong>Start</strong> and <strong>End</strong> times (HH:MM:SS) to trim the video
+                    (Single videos only).</li>
+            </ul>
+        </li>
+        <li><strong>Manage Downloads</strong>:
+            <ul>
+                <li>Click <strong>"Add to Download Queue"</strong>.</li>
+                <li><strong>For Playlists</strong>: A new window will open listing all videos. Check the ones you want
+                    (or "Select All") and click "Download Selected".</li>
+                <li>Monitor progress in the "Active Downloads" list.</li>
+                <li>Use the <strong>Stop</strong> button to cancel and remove a download.</li>
+                <li>Use the <strong>Retry Download</strong> button to retry downloads that failed or were interrupted.
+                </li>
+            </ul>
+        </li>
+    </ol>
+    
+    <h2>Configuration</h2>
+    <p>You can configure global settings in <strong>NVDA Menu -> Preferences -> Settings -> YouTube Downloader</strong>:</p>
+    <ul>
+        <li><strong>Download Folder</strong>: Set your default download location.</li>
+        <li><strong>Enable SponsorBlock</strong>: Check this to automatically remove sponsors from downloaded videos.</li>
+        <li><strong>Embed Metadata</strong>: Check this to include Artist, Title, and Chapters in the file (Thumbnails are excluded).</li>
+    </ul>
+
+    <h2>Feedback & Support</h2>
+    <p>I value your feedback and suggestions! If you encounter any issues or have ideas for new features, please reach
+        out:</p>
+    <ul>
+        <li><strong>Telegram</strong>: <a href="https://t.me/nvdayt">@nvdayt</a></li>
+        <li><strong>Email</strong>: <a href="mailto:aakashshah921@zohomail.in">aakashshah921@zohomail.in</a></li>
+        <li><strong>Website</strong>: <a href="https://netrabytes.qzz.io/projects/nvda-youtube-downloader">Project Page</a></li>
+    </ul>
+
+    <hr>
+    <p><em>Built with ❤️ for the NVDA Community.</em></p>
+
+</body>
+
+</html>
