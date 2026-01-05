@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.pyc
+
+# Binaries
+bin/
+globalPlugins/youtubeDownloader/bin/
+*.exe
+*.dll
+*.zip
+
+# Addon Packing
+*.nvda-addon
+.vscode/
+secrets.py
+packet_sdk/
+
+# Logs
+*.log
+install.log
