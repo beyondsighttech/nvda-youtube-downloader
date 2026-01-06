@@ -13,6 +13,7 @@ from . import downloader
 import config
 import gui
 from gui import guiHelper, settingsDialogs
+from urllib.parse import urlparse
 
 
 # Try to import UIAHandler (only available in NVDA)
@@ -316,9 +317,19 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 							name = (obj.name or "").lower()
 							if "address" in name or "search" in name or "location" in name:
 								# Check value
+								# Check value
 								val = obj.value or ""
-								if "youtube.com" in val or "youtu.be" in val:
-									return True
+								# Secure Check
+								try:
+									u = val
+									if "://" not in u:
+										u = "https://" + u
+									parsed = urlparse(u)
+									host = (parsed.hostname or "").lower()
+									if host in ["youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com", "youtu.be"]:
+										return True
+								except:
+									pass
 						return False
 					# Search up to window
 					curr = focus
@@ -357,7 +368,20 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 						data = wx.TextDataObject()
 						wx.TheClipboard.GetData(data)
 						text = data.GetText()
-						if "youtube.com" in text or "youtu.be" in text:
+						# Secure Check
+						is_yt = False
+						try:
+							u = text
+							if "://" not in u:
+								u = "https://" + u
+							parsed = urlparse(u)
+							host = (parsed.hostname or "").lower()
+							if host in ["youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com", "youtu.be"]:
+								is_yt = True
+						except:
+							pass
+						
+						if is_yt:
 							url = text
 							logging.info(f"Found URL via Clipboard: {url}")
 					wx.TheClipboard.Close()
