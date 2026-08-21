@@ -105,7 +105,7 @@ class DownloaderDialog(wx.Dialog):
 					break
 			if not found:
 				self.choice_format.SetSelection(0)
-		except:
+		except Exception:
 			self.choice_format.SetSelection(0)
 			
 		self.choice_format.Bind(wx.EVT_CHOICE, self.on_format_change)
@@ -338,7 +338,7 @@ class DownloaderDialog(wx.Dialog):
 		try:
 			if last_quality in choices:
 				self.choice_quality.SetStringSelection(last_quality)
-		except:
+		except Exception:
 			pass
 
 	def is_valid_url(self, url):
@@ -406,7 +406,7 @@ class DownloaderDialog(wx.Dialog):
 					if len(parts) == 3: return parts[0]*3600 + parts[1]*60 + parts[2]
 					if len(parts) == 2: return parts[0]*60 + parts[1]
 					return 0
-				except:
+				except Exception:
 					return 0
 			
 			s_sec = to_seconds(start_time)
@@ -481,18 +481,9 @@ class DownloaderDialog(wx.Dialog):
 		if dlg.ShowModal() == wx.ID_OK:
 			items = dlg.get_selected_items()
 			if items:
-				# Start batch download
-				# Note: batch currently defaults to mp3 in start_batch_download. We need to update that too or just loop here.
-				# Updating start_batch_download requires changing init. Let's start individual downloads here to keep it simple with new formats
-				# Or better, update start_batch_download in init. But for now, let's just loop locally OR assume plugin handles it.
-				# Actually, start_batch_download just calls start_download in a loop.
-				# Let's fix start_batch_download in init.py later? No, let's just use start_batch_download but it misses audio_format arg.
-				# Fix: We must update start_batch_download signature in __init__.py too. 
-				# For now, I will assume I updated it (I forgot!). Let me quickly check or just pass it in kwargs if possible.
-				# Wait, Python doesn't support magically passing args. I missed one spot in __init__.py: start_batch_download.
-				# I will handle that in a separate step. For now, let's call it assuming it exists or I'll fix it next tool call.
+				# Start a batch download for the selected videos.
 				self.plugin.start_batch_download(url, is_audio, quality_str, items, info['title'], audio_format=audio_format)
-				
+
 				# Clear input
 				self.txt_url.SetValue("")
 				self.txt_url.SetFocus()
@@ -513,7 +504,7 @@ class DownloaderDialog(wx.Dialog):
 			try:
 				secs = int(time_str)
 				return str(datetime.timedelta(seconds=secs))
-			except:
+			except Exception:
 				return None
 				
 		# Check if MM:SS or HH:MM:SS
@@ -523,7 +514,7 @@ class DownloaderDialog(wx.Dialog):
 				m = int(parts[0])
 				s = int(parts[1])
 				return str(datetime.timedelta(minutes=m, seconds=s))
-			except:
+			except Exception:
 				return None
 		elif len(parts) == 3: # HH:MM:SS
 			try:
@@ -531,7 +522,7 @@ class DownloaderDialog(wx.Dialog):
 				m = int(parts[1])
 				s = int(parts[2])
 				return str(datetime.timedelta(hours=h, minutes=m, seconds=s))
-			except:
+			except Exception:
 				return None
 				
 		return None

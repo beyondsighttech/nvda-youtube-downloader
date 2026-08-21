@@ -3,16 +3,16 @@ import addonHandler
 import wx
 from . import dialogs
 import os
-import logging
 import api
 import controlTypes
-from NVDAObjects.IAccessible import IAccessible
 import threading
 import subprocess
 from . import downloader
 import config
 import gui
 from gui import guiHelper, settingsDialogs
+from scriptHandler import script
+from logHandler import log
 from urllib.parse import urlparse
 
 
@@ -25,10 +25,6 @@ except ImportError:
 	UIA = None
 
 addonHandler.initTranslation()
-
-# Setup basic logging to a temp file for debugging
-# Setup basic logging (NVDA will handle this, or we can silence it)
-# logging.basicConfig(level=logging.INFO)
 
 # Register Configuration
 confspec = {
@@ -91,18 +87,15 @@ class YouTubeDownloaderSettingsPanel(settingsDialogs.SettingsPanel):
 		threading.Thread(target=self._run_manual_update).start()
 		
 	def _run_manual_update(self):
-		# Get the plugin instance
-		plugin = None
-		for p in globalPluginHandler.runningPlugins:
-			if isinstance(p, GlobalPlugin):
-				plugin = p
-				break
-				
+		# Use the class-level reference to the running plugin instance rather
+		# than iterating globalPluginHandler.runningPlugins, which is keyed by
+		# file path (so it yields strings, not plugin instances).
+		plugin = GlobalPlugin._instance
 		if plugin:
 			result = plugin._silent_update(manual=True)
 			wx.CallAfter(wx.MessageBox, result, _("Update Check"), wx.OK | wx.ICON_INFORMATION)
 		else:
-			wx.CallAfter(wx.MessageBox, "Plugin instance not found.", _("Error"), wx.OK | wx.ICON_ERROR)
+			wx.CallAfter(wx.MessageBox, _("YouTube Downloader is not running."), _("Error"), wx.OK | wx.ICON_ERROR)
 
 	def onBrowse(self, event):
 		dlg = wx.DirDialog(self, _("Choose Download Folder"), self.pathEntry.Value)
@@ -118,9 +111,14 @@ class YouTubeDownloaderSettingsPanel(settingsDialogs.SettingsPanel):
 		config.conf["youtubeDownloader"]["normalizeAudio"] = self.chkNormalize.Value
 
 class GlobalPlugin(globalPluginHandler.GlobalPlugin):
+	# Holds a reference to the single running instance, so that the settings
+	# panel (which NVDA instantiates independently) can reach it.
+	_instance = None
+
 	def __init__(self):
 		super(GlobalPlugin, self).__init__()
-		logging.info("YouTube Downloader Addon Loaded")
+		GlobalPlugin._instance = self
+		log.info("YouTube Downloader Addon Loaded")
 		
 		# Register settings panel
 		settingsDialogs.NVDASettingsDialog.categoryClasses.append(YouTubeDownloaderSettingsPanel)
@@ -154,20 +152,20 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		# Unregister settings panel
 		try:
 			settingsDialogs.NVDASettingsDialog.categoryClasses.remove(YouTubeDownloaderSettingsPanel)
-		except:
+		except Exception:
 			pass
-			
+
 		# Remove menu item
 		try:
 			if self.menuItem:
 				self.toolsMenu.Remove(self.menuItem)
-		except:
+		except Exception:
 			pass
-			
+
 		# Close dialog if open
 		if self.dlg:
 			self.dlg.Destroy()
-			
+
 		# Kill all active downloads
 		for d_id, data in self.downloads.items():
 			if data.get('process'):
@@ -175,15 +173,16 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 					data['process'].terminate()
 					# Give it a moment to die gracefully
 					data['process'].wait(timeout=1)
-				except:
+				except Exception:
 					pass
 			# Mark as interrupted if it was running
 			status = data.get('status', '')
 			if "Completed" not in status and "Error" not in status and "Stopped" not in status:
 				data['status'] = "Interrupted"
-		
+
 		self.save_state()
-			
+
+		GlobalPlugin._instance = None
 		super(GlobalPlugin, self).terminate()
 
 	def save_state(self):
@@ -206,7 +205,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			with open(state_file, 'w', encoding='utf-8') as f:
 				json.dump(data_to_save, f, indent=4)
 		except Exception as e:
-			logging.error(f"Failed to save state: {e}")
+			log.error(f"Failed to save state: {e}")
 
 	def load_state(self):
 		"""Loads downloads from JSON file."""
@@ -237,7 +236,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				
 			self.next_download_id = max_id + 1
 		except Exception as e:
-			logging.error(f"Failed to load state: {e}")
+			log.error(f"Failed to load state: {e}")
 
 	def _silent_update(self, manual=False):
 		"""Runs yt-dlp -U to update the binary."""
@@ -246,10 +245,9 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		try:
 			yt_dlp_path = downloader.get_yt_dlp_path()
 			if os.path.exists(yt_dlp_path):
-				logging.info("Checking for yt-dlp updates...")
+				log.info("Checking for yt-dlp updates...")
 				# Hide console
-				startupinfo = subprocess.STARTUPINFO()
-				startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+				startupinfo = downloader._no_console_startupinfo()
 				
 				# Capture output
 				proc = subprocess.run(
@@ -264,7 +262,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				)
 				
 				output = proc.stdout + "\n" + proc.stderr
-				logging.info(f"Update Output: {output}")
+				log.info(f"Update Output: {output}")
 				
 				if "up-to-date" in output or "is up to date" in output:
 					status_msg = "yt-dlp is up to date."
@@ -273,13 +271,13 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 					try:
 						ver = output.split("Updating to version")[1].split()[0]
 						status_msg = f"Updated yt-dlp to version {ver}."
-					except:
+					except Exception:
 						status_msg = "Updated yt-dlp to latest version."
 				else:
 					status_msg = f"Update Info: {output.strip()[:100]}..." # Truncate for msg box
 					
 		except Exception as e:
-			logging.error(f"Auto-update failed: {e}")
+			log.error(f"Auto-update failed: {e}")
 			status_msg = f"Update failed: {str(e)}"
 		finally:
 			self.is_updating = False
@@ -290,104 +288,88 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
 	scriptCategory = _("YouTube Downloader")
 
+	@script(
+		# Translators: Description of the command that opens the YouTube Downloader dialog.
+		description=_("Opens the YouTube Downloader dialog."),
+		gesture="kb:NVDA+shift+y"
+	)
 	def script_openDownloader(self, gesture):
-		"""Opens the YouTube Downloader dialog."""
-		logging.info("Opening Downloader GUI")
+		log.info("Opening Downloader GUI")
 		url = self.get_video_url()
 		# Ensure we are on the main thread for GUI operations
 		wx.CallAfter(self._showGui, url)
-	
-	def script_openSettings(self, gesture):
-		"""Opens the YouTube Downloader settings."""
-		wx.CallAfter(gui.mainFrame._popupSettingsDialog, settingsDialogs.NVDASettingsDialog, YouTubeDownloaderSettingsPanel)
 
 	def get_video_url(self):
 		url = ""
-		
-		# Strategy 1: UIA (Robust Browser Detection)
+
+		# Strategy 1: UIA (robust browser address-bar detection)
 		if handler and UIA:
 			try:
-				# Get the foreground window
 				focus = api.getFocusObject()
-				if focus.appModule.appName in ["chrome", "msedge", "firefox", "brave"]:
-					# We are in a browser. Try to find the address bar.
-					# Helper to check if obj is address bar
+				if focus.appModule and focus.appModule.appName in ["chrome", "msedge", "firefox", "brave"]:
+					# Helper to decide whether an NVDAObject is the browser address bar.
 					def is_address_bar(obj):
-						if obj.role == controlTypes.Role.EDIT:
-							name = (obj.name or "").lower()
-							if "address" in name or "search" in name or "location" in name:
-								# Check value
-								# Check value
-								val = obj.value or ""
-								# Secure Check
-								try:
-									u = val
-									if "://" not in u:
-										u = "https://" + u
-									parsed = urlparse(u)
-									host = (parsed.hostname or "").lower()
-									if host in ["youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com", "youtu.be"]:
-										return True
-								except:
-									pass
-						return False
-					# Search up to window
-					curr = focus
-					while curr and curr.role != controlTypes.Role.WINDOW:
-						curr = curr.parent
-					
-					window = curr
+						if obj.role != controlTypes.Role.EDITABLETEXT:
+							return False
+						name = (obj.name or "").lower()
+						if "address" not in name and "search" not in name and "location" not in name:
+							return False
+						val = obj.value or ""
+						# Only accept YouTube hosts.
+						try:
+							u = val if "://" in val else "https://" + val
+							host = (urlparse(u).hostname or "").lower()
+							return host in [
+								"youtube.com", "www.youtube.com", "m.youtube.com",
+								"music.youtube.com", "youtu.be",
+							]
+						except Exception:
+							return False
+
+					# Walk up to the top-level window, then breadth-first search its children.
+					window = focus
+					while window and window.role != controlTypes.Role.WINDOW:
+						window = window.parent
+
 					if window:
-						# BFS Search
 						queue = [window]
-						visited = set()
-						# Limit depth/count to avoid freeze
-						count = 0
+						count = 0  # Limit to avoid a freeze on huge trees.
 						while queue and count < 500:
 							node = queue.pop(0)
 							count += 1
-							
 							if is_address_bar(node):
 								url = node.value
-								logging.info(f"Found URL via UIA: {url}")
+								log.info(f"Found URL via UIA: {url}")
 								return url
-							
-							# Add children
 							child = node.firstChild
 							while child:
 								queue.append(child)
 								child = child.next
 			except Exception as e:
-				logging.error(f"UIA URL fetch failed: {type(e).__name__}: {e}", exc_info=True)
+				log.error(f"UIA URL fetch failed: {type(e).__name__}: {e}", exc_info=True)
 
-		# Strategy 2: Clipboard (Fallback)
+		# Strategy 2: clipboard fallback
 		if not url:
 			try:
 				if wx.TheClipboard.Open():
-					if wx.TheClipboard.IsSupported(wx.DataFormat(wx.DF_TEXT)):
-						data = wx.TextDataObject()
-						wx.TheClipboard.GetData(data)
-						text = data.GetText()
-						# Secure Check
-						is_yt = False
-						try:
-							u = text
-							if "://" not in u:
-								u = "https://" + u
-							parsed = urlparse(u)
-							host = (parsed.hostname or "").lower()
-							if host in ["youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com", "youtu.be"]:
-								is_yt = True
-						except:
-							pass
-						
-						if is_yt:
-							url = text
-							logging.info(f"Found URL via Clipboard: {url}")
-					wx.TheClipboard.Close()
-			except:
+					try:
+						if wx.TheClipboard.IsSupported(wx.DataFormat(wx.DF_TEXT)):
+							data = wx.TextDataObject()
+							wx.TheClipboard.GetData(data)
+							text = data.GetText()
+							u = text if "://" in text else "https://" + text
+							host = (urlparse(u).hostname or "").lower()
+							if host in [
+								"youtube.com", "www.youtube.com", "m.youtube.com",
+								"music.youtube.com", "youtu.be",
+							]:
+								url = text
+								log.info(f"Found URL via Clipboard: {url}")
+					finally:
+						wx.TheClipboard.Close()
+			except Exception:
 				pass
-			
+
 		return url
 
 	def _showGui(self, url=""):
@@ -406,9 +388,14 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self.dlg.SetFocus()
 
 	def is_url_downloading(self, url):
-		"""Checks if a URL is currently being downloaded."""
+		"""Checks if a URL is currently being downloaded. Status strings are
+		stored as e.g. "<title> - Completed", so matching must be by substring
+		(consistent with save_state/load_state/terminate)."""
 		for data in self.downloads.values():
-			if data.get('url') == url and data.get('status') != "Completed" and data.get('status') != "Error":
+			if data.get('url') != url:
+				continue
+			status = data.get('status', '')
+			if ("Completed" not in status and "Error" not in status and "Stopped" not in status):
 				return True
 		return False
 
@@ -419,10 +406,10 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			video_id = item['id']
 			video_title = item['title']
 			video_url = f"https://www.youtube.com/watch?v={video_id}"
-			
+
 			# We pass playlist_title to ensure they go into the same folder
 			# We pass video_title as known_title to avoid "Resolving..."
-			self.start_download(video_url, is_audio, quality_str, None, None, playlist_mode=False, playlist_title=playlist_title, known_title=video_title)
+			self.start_download(video_url, is_audio, quality_str, None, None, playlist_mode=False, playlist_title=playlist_title, known_title=video_title, audio_format=audio_format)
 
 	def start_download(self, url, is_audio, quality_str, start_time, end_time, playlist_mode=None, playlist_items=None, playlist_title=None, known_title=None, audio_format="mp3"):
 		"""Adds a download to the queue."""
@@ -452,8 +439,6 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				'end_time': end_time,
 				'playlist_mode': playlist_mode,
 				'playlist_items': playlist_items,
-				'playlist_title': playlist_title,
-				'known_title': known_title,
 				'playlist_title': playlist_title,
 				'known_title': known_title,
 				'remove_sponsors': remove_sponsors,
@@ -520,28 +505,26 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		try:
 			# 1. Fetch Title
 			title = known_title if known_title else "Unknown Video"
-			
+
 			if not known_title:
 				if playlist_title and not playlist_mode:
-					# It's an item in a playlist, but we don't have the title?
-					# We'll let yt-dlp resolve it.
+					# It is an item in a playlist without a known title; let yt-dlp resolve it.
 					pass
 				elif playlist_mode is not True:
 					yt_dlp_path = downloader.get_yt_dlp_path()
 					try:
-						startupinfo = subprocess.STARTUPINFO()
-						startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+						startupinfo = downloader._no_console_startupinfo()
 						result = subprocess.run(
-							[yt_dlp_path, "--get-title", "--skip-download", "--no-warnings", "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36", url],
+							[yt_dlp_path, "--get-title", "--skip-download", "--no-warnings", url],
 							capture_output=True, text=True, startupinfo=startupinfo, check=False
 						)
 						if result.returncode == 0:
 							title = result.stdout.strip()
 						else:
-							logging.error(f"Failed to fetch title for {url}. Return code: {result.returncode}. Stderr: {result.stderr}")
-							# Fallback title if individual fetch fails (try to proceed with download anyway using URL as pseudo-title)
+							log.error(f"Failed to fetch title for {url}. Return code: {result.returncode}. Stderr: {result.stderr}")
+							# Fallback: proceed using a pseudo-title derived from the video id.
 							title = "Video_" + url.split("v=")[-1].split("&")[0]
-					except:
+					except Exception:
 						pass
 				else:
 					title = playlist_title if playlist_title else "Playlist"
@@ -562,7 +545,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 					if not os.path.exists(download_path):
 						os.makedirs(download_path)
 				except Exception as e:
-					logging.error(f"Failed to create download directory '{download_path}': {e}")
+					log.error(f"Failed to create download directory '{download_path}': {e}")
 					# Fallback to defaults if creation fails
 					download_path = os.path.join(os.path.expanduser("~"), "Downloads")
 			else:
@@ -571,7 +554,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			if not os.path.exists(download_path):
 				try:
 					os.makedirs(download_path)
-				except:
+				except Exception:
 					pass
 			
 			def progress_hook(status):
@@ -612,14 +595,14 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 							if "%" in part:
 								percent = float(part.replace("%", ""))
 								break
-					except:
+					except Exception:
 						pass
 					
 					if "Downloading video" in line:
 						try:
 							progress_part = line.split("Downloading video ")[1].strip()
 							self._update_ui_status(d_id, f"{display_title} - Video {progress_part}")
-						except:
+						except Exception:
 							self._update_ui_status(d_id, f"{display_title} - {line}")
 					elif percent is not None:
 						status_msg = f"{display_title} - "
@@ -656,9 +639,9 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			if not self.downloads[d_id].get('manual_stop', False):
 				self.downloads[d_id]['status'] = "Error"
 				self._update_ui_status(d_id, f"Error: {title}")
-				logging.error(f"Download error {d_id}: {e}")
+				log.error(f"Download error {d_id}: {e}")
 			else:
-				logging.info(f"Download {d_id} stopped manually.")
+				log.info(f"Download {d_id} stopped manually.")
 				
 			self.save_state()
 		
@@ -675,8 +658,10 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		if d_id in self.downloads:
 			data = self.downloads[d_id]
 			
-			# Reset status
+			# Reset status and clear any previous manual-stop flag so a fresh
+			# failure is correctly reported as an error.
 			data['status'] = "Queued"
+			data['manual_stop'] = False
 			self._update_ui_status(d_id, f"{data['title']} - Queued")
 			
 			# Re-add to queue
@@ -700,11 +685,11 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				try:
 					proc.terminate()
 					proc.wait(timeout=2)
-				except:
+				except Exception:
 					# Force kill if terminate fails or times out
 					try:
 						proc.kill()
-					except:
+					except Exception:
 						pass
 			
 			# Cleanup partial files (User requested Stop = Delete)
@@ -741,7 +726,3 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			# Update UI
 			if self.dlg:
 				wx.CallAfter(self.dlg.remove_download_item, d_id)
-
-	__gestures = {
-		"kb:NVDA+shift+y": "openDownloader",
-	}
