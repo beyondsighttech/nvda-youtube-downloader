@@ -20,6 +20,11 @@ def create_addon_package():
     
     print(f"Creating package: {output_filename}")
     
+    # Binaries (yt-dlp.exe, ffmpeg.exe, ...) are downloaded at runtime by the
+    # add-on itself, so they must never be bundled into the package.
+    excluded_dirs = {'__pycache__', 'bin'}
+    excluded_extensions = ('.pyc', '.exe', '.dll', '.zip')
+    
     with zipfile.ZipFile(output_filename, 'w', zipfile.ZIP_DEFLATED) as addon_zip:
         for item in includes:
             item_path = os.path.join(base_dir, item)
@@ -27,12 +32,11 @@ def create_addon_package():
                 addon_zip.write(item_path, item)
             elif os.path.isdir(item_path):
                 for root, dirs, files in os.walk(item_path):
-                    # Exclude __pycache__
-                    if '__pycache__' in dirs:
-                        dirs.remove('__pycache__')
+                    # Exclude unwanted directories (in-place so os.walk skips them)
+                    dirs[:] = [d for d in dirs if d not in excluded_dirs]
                     
                     for file in files:
-                        if file.endswith('.pyc'):
+                        if file.endswith(excluded_extensions):
                             continue
                             
                         file_path = os.path.join(root, file)
