@@ -20,6 +20,9 @@ An accessible NVDA add-on that allows users to download videos and audio from Yo
 3. Open the file to verify and install it in NVDA.
 4. Restart NVDA when prompted.
 
+The required `yt-dlp` and `FFmpeg` binaries are **downloaded automatically** the
+first time you start a download, so no manual setup is needed.
+
 ## Usage
 1. Copy a YouTube URL to your clipboard.
 2. Press `NVDA+Shift+Y` (default shortcut) to open the Downloader Dialog.
@@ -32,8 +35,9 @@ An accessible NVDA add-on that allows users to download videos and audio from Yo
 To run this add-on from source for development:
 
 1. Clone this repository into your NVDA user configuration's `addons` directory (e.g., `%APPDATA%\nvda\addons`).
-2. Ensure you have the `bin` folder populated with `yt-dlp.exe`, `ffmpeg.exe`, AND `ffprobe.exe`. (These are excluded from the repo to save space).
-3. Restart NVDA to load the plugin features.
+2. Restart NVDA to load the plugin features. (`yt-dlp.exe`, `ffmpeg.exe`, and
+   `ffprobe.exe` are fetched automatically on first use into the add-on's `bin`
+   folder; you do not need to add them manually.)
 
 ### Building
 Run the build script to create an `.nvda-addon` package:
