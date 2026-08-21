@@ -1,20 +1,22 @@
 import os
 import subprocess
+import threading
 import urllib.request
-import sys
-import time
 import zipfile
 import shutil
 
 # Try to import NVDA's ui module for speech
 try:
 	import ui
+	from logHandler import log
 except ImportError:
 	# Mock for local testing
 	class UI:
 		def message(self, msg):
 			print(f"NVDA SPEECH: {msg}")
 	ui = UI()
+	import logging
+	log = logging.getLogger("youtubeDownloader")
 
 # Constants
 ADDON_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -26,6 +28,16 @@ FFMPEG_ZIP_URL = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.z
 def ensure_bin_dir():
 	if not os.path.exists(BIN_DIR):
 		os.makedirs(BIN_DIR)
+
+
+def _no_console_startupinfo():
+	"""Returns a STARTUPINFO that hides the child console window on Windows,
+	or ``None`` on other platforms (used for local testing only)."""
+	if os.name == "nt":
+		startupinfo = subprocess.STARTUPINFO()
+		startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+		return startupinfo
+	return None
 
 def sanitize_filename(name):
 	"""
@@ -60,145 +72,94 @@ def get_ffprobe_path():
 	return os.path.join(BIN_DIR, "ffprobe.exe")
 
 def check_dependencies(progress_hook=None):
+	"""Ensures all required binaries (yt-dlp, ffmpeg, ffprobe) are present,
+	downloading them automatically on first use, then returns their paths."""
 	ensure_bin_dir()
 	yt_dlp_path = get_yt_dlp_path()
 	ffmpeg_path = get_ffmpeg_path()
-	
-	# Check yt-dlp
-	if not os.path.exists(yt_dlp_path):
-		raise Exception("yt-dlp.exe not found in bin directory. Please ensure the addon was installed correctly.")
-		
-	# Check ffmpeg
-	if not os.path.exists(ffmpeg_path):
-		raise Exception("ffmpeg.exe not found in bin directory. Please ensure the addon was installed correctly.")
-		
-	# Check ffprobe
 	ffprobe_path = get_ffprobe_path()
+
+	# Download anything that is missing (serialised to avoid races between
+	# concurrent download threads).
+	with _BIN_LOCK:
+		if not os.path.exists(yt_dlp_path):
+			log.info("yt-dlp not found, downloading...")
+			if progress_hook:
+				progress_hook("Downloading yt-dlp...")
+			ui.message("Downloading yt-dlp, please wait...")
+			_download_file(YT_DLP_URL, yt_dlp_path)
+
+		if not os.path.exists(ffmpeg_path) or not os.path.exists(ffprobe_path):
+			log.info("ffmpeg/ffprobe not found, downloading...")
+			if progress_hook:
+				progress_hook("Downloading FFmpeg...")
+			ui.message("Downloading FFmpeg, this may take a moment...")
+			_download_and_extract_ffmpeg()
+
+	# Final verification
+	if not os.path.exists(yt_dlp_path):
+		raise Exception("yt-dlp.exe could not be located or downloaded. Please check your internet connection.")
+	if not os.path.exists(ffmpeg_path):
+		raise Exception("ffmpeg.exe could not be located or downloaded. It is required for conversion and merging.")
 	if not os.path.exists(ffprobe_path):
-		raise Exception("ffprobe.exe not found in bin directory. It is required for metadata and format merging. Please install it.")
-			
+		raise Exception("ffprobe.exe could not be located or downloaded. It is required for metadata and format merging.")
+
 	return yt_dlp_path, ffmpeg_path, ffprobe_path
 
-def download_video(url, output_path, is_audio, quality_str, start_time, end_time, progress_hook, playlist_mode=None, remove_sponsors=False, embed_metadata=True, download_subs=False, normalize_audio=False, audio_format="mp3"):
-	"""
-	Downloads video/audio using yt-dlp with trimming and quality options.
-	"""
-	yt_dlp_path, ffmpeg_path, ffprobe_path = check_dependencies(progress_hook)
-	
-	if progress_hook:
-		progress_hook("Starting download...")
-		ui.message("Starting download...")
-		
-	# Build command
-	cmd = [
-		yt_dlp_path,
-		"--ffmpeg-location", os.path.dirname(ffmpeg_path),
-		"--output", os.path.join(output_path, "%(title)s.%(ext)s"),
-		"--no-progress", # We parse output manually
-		"--no-mtime", # Don't set file modification time (faster IO)
-		"--no-mark-watched",
-		"--extractor-args", "youtube:player_client=default", # Fix for JS warning
-		"--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-		"--referer", "https://www.youtube.com/",
-	]
-	
-	# Playlist mode
-	if playlist_mode is True:
-		cmd.append("--yes-playlist")
-	elif playlist_mode is False:
-		cmd.append("--no-playlist")
-	
-	# Format selection
-	if is_audio:
-		cmd.extend(["-x", "--audio-format", audio_format])
-		# Quality (Bitrate) - Only relevant for lossy formats like mp3/m4a/ogg
-		if quality_str and "kbps" in quality_str:
-			bitrate = quality_str.split(" ")[0] # e.g. "320"
-			cmd.extend(["--audio-quality", f"{bitrate}K"])
-		else:
-			# Best (Default) - usually 0 (best)
-			cmd.extend(["--audio-quality", "0"])
-	else:
-		cmd.extend(["--format", "bestvideo+bestaudio/best"])
-		cmd.extend(["--merge-output-format", "mp4"])
-		# Quality (Resolution)
-		if quality_str and "p" in quality_str:
-			res = quality_str.replace("p", "") # e.g. "1080"
-			# yt-dlp format selector for resolution
-			cmd.extend(["-S", f"res:{res}"])
 
-	# Trimming
-	if start_time and end_time:
-		cmd.extend(["--download-sections", f"*{start_time}-{end_time}"])
+# Serialises binary downloads so concurrent threads do not download twice.
+_BIN_LOCK = threading.Lock()
 
-	# SponsorBlock
-	if remove_sponsors:
-		cmd.extend(["--sponsorblock-remove", "default"])
 
-	# Metadata (Requested by User)
-	if embed_metadata:
-		cmd.append("--add-metadata")
-		
-	# Subtitles
-	if download_subs:
-		cmd.extend(["--write-subs", "--embed-subs", "--sub-langs", "en.*,auto"])
+def _download_file(url, dest_path):
+	"""Downloads a single file from ``url`` to ``dest_path`` with a temp name."""
+	tmp_path = dest_path + ".tmp"
+	try:
+		with urllib.request.urlopen(url, timeout=120) as response, open(tmp_path, "wb") as out_file:
+			shutil.copyfileobj(response, out_file)
+		# Move into place atomically once the download is complete.
+		os.replace(tmp_path, dest_path)
+		log.info(f"Downloaded {url} -> {dest_path}")
+	except Exception:
+		# Clean up a partial download so it is retried cleanly next time.
+		if os.path.exists(tmp_path):
+			try:
+				os.remove(tmp_path)
+			except OSError:
+				pass
+		raise
 
-	# Audio Normalization (Loudnorm)
-	if normalize_audio and is_audio:
-		# Use ffmpeg audio filter for loudness normalization
-		# Target I=-16 LUFS (Podcasts/Mobile standard), TP=-1.5 True Peak, LRA=11
-		cmd.extend(["--postprocessor-args", "ffmpeg:-af loudnorm=I=-16:TP=-1.5:LRA=11"])
 
-	cmd.append(url)
-	
-	# Run command
-	startupinfo = subprocess.STARTUPINFO()
-	startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-	
-	process = subprocess.Popen(
-		cmd,
-		stdout=subprocess.PIPE,
-		stderr=subprocess.STDOUT,
-		text=True,
-		startupinfo=startupinfo,
-		encoding='utf-8',
-		errors='replace'
-	)
-	
-	for line in process.stdout:
-		line = line.strip()
-		if not line: continue
-		
-		# Parse progress
-		if progress_hook:
-			if "[download]" in line:
-				# Extract percentage
-				# Example: [download]  45.6% of 10.00MiB at 2.00MiB/s ETA 00:05
-				percent = None
-				try:
-					parts = line.split()
-					for part in parts:
-						if "%" in part:
-							percent = float(part.replace("%", ""))
-							break
-				except:
-					pass
-				
-				progress_hook(line, percent)
-			elif "[ExtractAudio]" in line:
-				progress_hook(f"Converting to {audio_format.upper()}...")
-			elif "[Merger]" in line:
-				progress_hook("Merging video/audio...")
-				
-	process.wait()
-	
-	if process.returncode != 0:
-		raise Exception("Download failed. Check logs or URL.")
-		
-	if progress_hook:
-		progress_hook("Download finished!")
-		ui.message("Download finished!")
+def _download_and_extract_ffmpeg():
+	"""Downloads the FFmpeg essentials build and extracts ffmpeg.exe/ffprobe.exe
+	into the bin directory."""
+	ensure_bin_dir()
+	bin_dir = BIN_DIR
+	zip_tmp = os.path.join(bin_dir, "ffmpeg_download.tmp.zip")
+	try:
+		log.info(f"Downloading FFmpeg from {FFMPEG_ZIP_URL}")
+		_download_file(FFMPEG_ZIP_URL, zip_tmp)
 
+		extracted = set()
+		with zipfile.ZipFile(zip_tmp) as zf:
+			for member in zf.namelist():
+				base = member.lower().split("/")[-1]
+				if base in ("ffmpeg.exe", "ffprobe.exe") and base not in extracted:
+					target = os.path.join(bin_dir, base)
+					with zf.open(member) as src, open(target, "wb") as dst:
+						shutil.copyfileobj(src, dst)
+					extracted.add(base)
+					log.info(f"Extracted {base}")
+
+		if "ffmpeg.exe" not in extracted or "ffprobe.exe" not in extracted:
+			raise Exception("FFmpeg archive did not contain the expected executables.")
+	finally:
+		# Always remove the downloaded archive to keep the bin folder small.
+		if os.path.exists(zip_tmp):
+			try:
+				os.remove(zip_tmp)
+			except OSError:
+				pass
 
 def cleanup_partial_files(output_path, title, filename=None):
 	"""
@@ -231,9 +192,9 @@ def cleanup_partial_files(output_path, title, filename=None):
 				if os.path.exists(full_path):
 					try:
 						os.remove(full_path)
-					except:
+					except Exception:
 						pass
-		except:
+		except Exception:
 			pass
 			
 	if not title: return
@@ -249,7 +210,7 @@ def cleanup_partial_files(output_path, title, filename=None):
 				if file.endswith(".part") or file.endswith(".ytdl") or file.endswith(".f137.webm") or file.endswith(".f140.m4a") or file.endswith(".temp"):
 					try:
 						os.remove(os.path.join(output_path, file))
-					except:
+					except Exception:
 						pass
 				# Also check for .webm / .m4a that might be left over from merge
 				# Be careful not to delete finished files if we are not sure
@@ -259,9 +220,9 @@ def cleanup_partial_files(output_path, title, filename=None):
 					if ".f" in file: 
 						try:
 							os.remove(os.path.join(output_path, file))
-						except:
+						except Exception:
 							pass
-	except:
+	except Exception:
 		pass
 
 def get_playlist_info(url):
@@ -278,14 +239,11 @@ def get_playlist_info(url):
 		"--dump-single-json",
 		"--no-warnings",
 		"--no-mark-watched", # Save API call
-		"--no-geo-bypass", # Faster unless geo is an issue
-		"--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
 		url
 	]
 	
-	startupinfo = subprocess.STARTUPINFO()
-	startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-	
+	startupinfo = _no_console_startupinfo()
+
 	try:
 		result = subprocess.run(
 			cmd,
@@ -318,8 +276,9 @@ def get_playlist_info(url):
 
 def download_video_with_process(url, output_path, is_audio, quality_str, start_time, end_time, progress_hook, playlist_mode=None, playlist_items=None, playlist_title=None, remove_sponsors=False, embed_metadata=True, download_subs=False, normalize_audio=False, audio_format="mp3"):
 	"""
-	Same as download_video but returns the process object for pause/stop control.
-	Supports advanced playlist downloading with item selection and folder creation.
+	Builds and starts a yt-dlp download as a subprocess, returning the Popen
+	object so the caller can stream progress and stop it. Supports trimming,
+	quality selection, playlists with item selection and folder creation.
 	"""
 	yt_dlp_path, ffmpeg_path, ffprobe_path = check_dependencies(progress_hook)
 	
@@ -338,7 +297,7 @@ def download_video_with_process(url, output_path, is_audio, quality_str, start_t
 	if not os.path.exists(output_path):
 		try:
 			os.makedirs(output_path)
-		except:
+		except Exception:
 			pass # Should handle permission errors gracefully
 
 	# Temp path for intermediate files
@@ -346,10 +305,14 @@ def download_video_with_process(url, output_path, is_audio, quality_str, start_t
 	if not os.path.exists(temp_path):
 		try:
 			os.makedirs(temp_path)
-		except:
+		except Exception:
 			pass
 	
-	# Build command
+	# Build command.
+	# Note: a hardcoded user-agent / player_client override is intentionally
+	# omitted. yt-dlp ships sensible, regularly updated defaults, and forcing an
+	# old Chrome 91 user-agent (as previous versions did) risks triggering
+	# YouTube's bot detection.
 	cmd = [
 		yt_dlp_path,
 		"--ffmpeg-location", os.path.dirname(ffmpeg_path),
@@ -357,8 +320,6 @@ def download_video_with_process(url, output_path, is_audio, quality_str, start_t
 		"--paths", f"home:{output_path}", # Final destination
 		"--paths", f"temp:{temp_path}", # Temp destination
 		"--newline", # Ensure progress is printed on new lines for parsing
-		"--extractor-args", "youtube:player_client=default",
-		"--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
 		"--referer", "https://www.youtube.com/",
 	]
 	
@@ -408,8 +369,7 @@ def download_video_with_process(url, output_path, is_audio, quality_str, start_t
 	cmd.append(url)
 	
 	# Run command
-	startupinfo = subprocess.STARTUPINFO()
-	startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+	startupinfo = _no_console_startupinfo()
 	
 	process = subprocess.Popen(
 		cmd,
