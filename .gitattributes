@@ -1,0 +1,14 @@
+# Normalize all text files to LF in the repository and on checkout, so the
+# add-on package builds byte-identically on every platform (Windows checkouts
+# must not inject CRLF into the sources that get zipped into .nvda-addon).
+* text=auto eol=lf
+
+# Windows scripts keep CRLF
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# These are binary, never normalize
+*.exe binary
+*.dll binary
+*.nvda-addon binary
+*.zip binary
