@@ -1,0 +1,55 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Validate tag matches manifest version
+        shell: bash
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          MANIFEST_VERSION="$(python build_addon.py --print-version)"
+          echo "Tag: $TAG_VERSION | Manifest: $MANIFEST_VERSION"
+          if [ "$TAG_VERSION" != "$MANIFEST_VERSION" ]; then
+            echo "::error::Tag v$TAG_VERSION does not match manifest.ini version $MANIFEST_VERSION. Fix one of them and re-tag."
+            exit 1
+          fi
+
+      - name: Validate manifest and packaging
+        run: python build_addon.py --check
+
+      - name: Build add-on package
+        run: python build_addon.py
+
+      - name: Compute SHA-256
+        shell: bash
+        run: |
+          cd dist
+          for f in *.nvda-addon; do
+            sha256sum "$f" | awk '{print $2": "$1}'
+            sha256sum "$f" > "$f.sha256"
+          done
+
+      - name: Create GitHub Release
+        shell: bash
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --title "youtubeDownloader ${GITHUB_REF_NAME#v}" \
+            --generate-notes \
+            dist/*
+
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

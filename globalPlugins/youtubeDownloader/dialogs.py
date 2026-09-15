@@ -4,7 +4,6 @@ from . import downloader
 import threading
 import re
 import config
-import subprocess
 import ui
 import datetime
 
@@ -416,8 +415,6 @@ class DownloaderDialog(wx.Dialog):
 				wx.MessageBox("Start Time must be less than End Time.", "Invalid Range", wx.OK | wx.ICON_ERROR)
 				return
 			
-		# Save user's selections for next time
-		# Save user's selections for next time
 		# Save just the main part e.g. "MP3" or "MP4" or "WAV"
 		config.conf["youtubeDownloader"]["lastFormat"] = format_str.split(" ")[0]
 		config.conf["youtubeDownloader"]["lastQuality"] = quality_str

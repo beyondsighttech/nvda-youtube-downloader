@@ -1,4 +1,3 @@
-import globalPluginHandler
 import addonHandler
 import wx
 from . import dialogs
@@ -10,6 +9,7 @@ import subprocess
 from . import downloader
 import config
 import gui
+import time
 from gui import guiHelper, settingsDialogs
 from scriptHandler import script
 from logHandler import log
@@ -115,6 +115,13 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 	# panel (which NVDA instantiates independently) can reach it.
 	_instance = None
 
+	# Persisted state lives in the user's home directory.
+	STATE_FILE_NAME = "nvda_yt_downloader_state.json"
+	# Marker file used to run the automatic yt-dlp update check at most once
+	# per interval, instead of on every NVDA start.
+	UPDATE_MARKER_FILE_NAME = "nvda_yt_downloader_last_update_check"
+	UPDATE_CHECK_INTERVAL_SECONDS = 24 * 60 * 60
+
 	def __init__(self):
 		super(GlobalPlugin, self).__init__()
 		GlobalPlugin._instance = self
@@ -136,8 +143,10 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		# Create Menu
 		self.createMenu()
 		
-		# Start silent update check (Always enabled now)
-		threading.Thread(target=self._silent_update, daemon=True).start()
+		# Start the automatic update check, but at most once per interval so
+		# NVDA startup isn't delayed by a network round-trip every single day.
+		if self._should_auto_update():
+			threading.Thread(target=self._silent_update, daemon=True).start()
 			
 		# Load saved downloads
 		self.load_state()
@@ -185,9 +194,33 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		GlobalPlugin._instance = None
 		super(GlobalPlugin, self).terminate()
 
+	def _state_file_path(self):
+		return os.path.join(os.path.expanduser("~"), self.STATE_FILE_NAME)
+
+	def _update_marker_path(self):
+		return os.path.join(os.path.expanduser("~"), self.UPDATE_MARKER_FILE_NAME)
+
+	def _should_auto_update(self):
+		"""True if the last automatic update check is older than the interval."""
+		marker = self._update_marker_path()
+		try:
+			if os.path.exists(marker) and (time.time() - os.path.getmtime(marker)) < self.UPDATE_CHECK_INTERVAL_SECONDS:
+				return False
+		except OSError:
+			pass
+		return True
+
+	def _mark_update_check_done(self):
+		"""Records that an update check ran (creates/updates the marker file)."""
+		try:
+			with open(self._update_marker_path(), "a", encoding="utf-8"):
+				pass
+		except OSError as e:
+			log.error(f"Failed to record update check time: {e}")
+
 	def save_state(self):
 		"""Saves the current downloads to a JSON file."""
-		state_file = os.path.join(os.path.expanduser("~"), "nvda_yt_downloader_state.json")
+		state_file = self._state_file_path()
 		data_to_save = {}
 		for d_id, data in self.downloads.items():
 			# Skip completed items to keep list clean on restart
@@ -209,7 +242,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
 	def load_state(self):
 		"""Loads downloads from JSON file."""
-		state_file = os.path.join(os.path.expanduser("~"), "nvda_yt_downloader_state.json")
+		state_file = self._state_file_path()
 		if not os.path.exists(state_file):
 			return
 			
@@ -243,6 +276,9 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self.is_updating = True
 		status_msg = "Update check failed."
 		try:
+			# Record the attempt even if it fails, so a broken connection on
+			# startup doesn't cause a retry on every subsequent NVDA restart.
+			self._mark_update_check_done()
 			yt_dlp_path = downloader.get_yt_dlp_path()
 			if os.path.exists(yt_dlp_path):
 				log.info("Checking for yt-dlp updates...")

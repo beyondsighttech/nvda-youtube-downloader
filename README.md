@@ -40,10 +40,25 @@ To run this add-on from source for development:
    folder; you do not need to add them manually.)
 
 ### Building
-Run the build script to create an `.nvda-addon` package:
+Run the build script to create an `.nvda-addon` package (in `dist/`):
 ```bash
 python build_addon.py
 ```
+
+Useful flags:
+- `--check` — validate `manifest.ini` and packaging inputs without building (used by CI).
+- `--print-version` — print the version from `manifest.ini` (used by CI).
+
+The build is reproducible: the same source always produces a byte-identical
+package, and the script prints its SHA-256 so users can verify downloads.
+
+### Continuous Integration
+- **CI** (`.github/workflows/ci.yml`): syntax-checks the sources, validates the
+  manifest and builds the package on every push to `main` and every pull request.
+- **Release** (`.github/workflows/release.yml`): when you push a tag like
+  `v1.4.0`, it verifies the tag matches `manifest.ini`, builds the package,
+  computes a SHA-256 checksum and publishes a GitHub Release with the
+  `.nvda-addon` attached — no binaries ever enter the repository.
 
 ## Credits
 - Core downloading power provided by [yt-dlp](https://github.com/yt-dlp/yt-dlp).

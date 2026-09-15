@@ -11,6 +11,7 @@ globalPlugins/youtubeDownloader/bin/
 
 # Addon Packing
 *.nvda-addon
+dist/
 .vscode/
 secrets.py
 packet_sdk/
