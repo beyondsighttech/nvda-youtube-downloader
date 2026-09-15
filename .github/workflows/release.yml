@@ -12,6 +12,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # full history and tags, for the changelog link
 
       - uses: actions/setup-python@v5
         with:
@@ -31,6 +33,9 @@ jobs:
       - name: Validate manifest and packaging
         run: python build_addon.py --check
 
+      - name: Run tests
+        run: python test_addon.py
+
       - name: Build add-on package
         run: python build_addon.py
 
@@ -39,17 +44,40 @@ jobs:
         run: |
           cd dist
           for f in *.nvda-addon; do
-            sha256sum "$f" | awk '{print $2": "$1}'
             sha256sum "$f" > "$f.sha256"
+            sha256sum -c "$f.sha256"
           done
 
       - name: Create GitHub Release
         shell: bash
-        run: |
-          gh release create "$GITHUB_REF_NAME" \
-            --title "youtubeDownloader ${GITHUB_REF_NAME#v}" \
-            --generate-notes \
-            dist/*
-
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          PREV_TAG="$(git tag --sort=-creatordate | grep -vx "$GITHUB_REF_NAME" | head -1 || true)"
+          CHANGELOG=""
+          if [ -n "$PREV_TAG" ]; then
+            CHANGELOG=$'\n'"**Full changelog:** https://github.com/${GITHUB_REPOSITORY}/compare/${PREV_TAG}...${GITHUB_REF_NAME}"$'\n'
+          fi
+          NOTES=$(cat <<EOF
+          ## Install
+
+          1. Download \`youtubeDownloader-${VERSION}.nvda-addon\` below.
+          2. Open the downloaded file to install it in NVDA.
+          3. Restart NVDA when prompted.
+
+          \`yt-dlp\` and FFmpeg are downloaded automatically the first time you
+          start a download - no manual setup is required.
+
+          ## Verify checksum
+
+          \`\`\`
+          sha256sum -c youtubeDownloader-${VERSION}.nvda-addon.sha256
+          \`\`\`
+          ${CHANGELOG}
+          EOF
+          )
+          gh release create "$GITHUB_REF_NAME" \
+            --title "youtubeDownloader ${VERSION}" \
+            --notes "$NOTES" \
+            dist/*

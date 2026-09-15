@@ -19,3 +19,7 @@ packet_sdk/
 # Logs
 *.log
 install.log
+
+# Local AI/dev tooling
+.freebuff/
+.codebuff/

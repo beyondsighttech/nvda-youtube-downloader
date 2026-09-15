@@ -21,6 +21,9 @@ jobs:
       - name: Validate manifest and packaging
         run: python build_addon.py --check
 
+      - name: Run tests
+        run: python test_addon.py
+
       - name: Build add-on package
         run: python build_addon.py
 
