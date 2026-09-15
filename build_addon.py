@@ -137,6 +137,9 @@ def build_addon_package():
             info = zipfile.ZipInfo(arcname, date_time=FIXED_ZIP_TIME)
             # 0o644 == rw-r--r-- : fixed permission bits for reproducibility.
             info.external_attr = 0o644 << 16
+            # zipfile stamps the building OS into the archive (Windows=0,
+            # Unix=3). Pin it so Windows and CI builds are byte-identical.
+            info.create_system = 0
             with open(file_path, "rb") as src:
                 addon_zip.writestr(info, src.read(), zipfile.ZIP_STORED)
 
