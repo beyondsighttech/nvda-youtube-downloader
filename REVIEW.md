@@ -198,9 +198,14 @@ at runtime, keeping the add-on ~24 KB.
 - **`self.downloads` is accessed from multiple threads** without a lock. Python's
   GIL keeps individual dict operations safe, and all UI mutation goes through
   `wx.CallAfter`, so it works in practice, but a proper lock would be cleaner.
-- **Translatability:** many user-facing strings in `dialogs.py` (button labels,
-  message boxes, list headers) are not wrapped in `_()`. They should be for
-  proper localisation (a prerequisite for the NV Access add-on store).
+- **Translatability:** as of 1.4.0, every user-facing string in `dialogs.py`
+  (button labels, message boxes, list headers) and `downloader.py` (status
+  messages) is wrapped in `_()`. The format/quality selectors now carry
+  machine-readable values (e.g. "320", "1080") separately from their
+  translated labels, so localisation can never break download logic.
+  Remaining: the internal status words ("Downloading", "Completed", ...)
+  double as state markers across the code, so they are still English-only;
+  splitting them into status codes + display text is future work.
 - The FFmpeg source is a single host (gyan.dev). It is the canonical, ffmpeg.org
  -linked source and the add-on fails loudly if it's unreachable; a GitHub-mirror
   fallback could be added later.

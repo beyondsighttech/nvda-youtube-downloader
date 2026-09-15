@@ -1,3 +1,6 @@
+import addonHandler
+addonHandler.initTranslation()
+
 import wx
 import os
 from . import downloader
@@ -7,22 +10,40 @@ import config
 import ui
 import datetime
 
+# Machine-readable format values. These are stored in config and passed to
+# the downloader; the _() wrapped labels next to them are purely cosmetic
+# and can be translated without breaking any logic.
+FMT_MP3 = "mp3"
+FMT_M4A = "m4a"
+FMT_WAV = "wav"
+FMT_FLAC = "flac"
+FMT_OGG = "ogg"
+FMT_MP4 = "mp4"
+
+# Machine-readable quality values. "best" means the format's default best
+# quality; numbers are kbps (audio) or vertical resolution (video).
+Q_BEST = "best"
+
+# Internal status markers (e.g. "Downloading", "Completed") double as state
+# indicators shared between the plugin, the UI and saved state files, so they
+# intentionally remain untranslated English-only substrings.
+
 class PlaylistSelectionDialog(wx.Dialog):
 	def __init__(self, parent, title, items):
-		super().__init__(parent, title=f"Select Videos from {title}", size=(600, 400))
+		super().__init__(parent, title=_("Select Videos from %s") % title, size=(600, 400))
 		self.items = items # [{'id':..., 'title':...}]
 		
 		panel = wx.Panel(self)
 		vbox = wx.BoxSizer(wx.VERTICAL)
 		
-		lbl = wx.StaticText(panel, label=f"Found {len(items)} videos. Select items to download:")
+		lbl = wx.StaticText(panel, label=_("Found %d videos. Select the items to download:") % len(items))
 		vbox.Add(lbl, flag=wx.ALL, border=10)
 		
 		# Use ListCtrl instead of CheckListBox for better accessibility
 		self.check_list = wx.ListCtrl(panel, style=wx.LC_REPORT | wx.LC_NO_HEADER)
 		self.check_list.EnableCheckBoxes(True)
 		# Set a very large width to prevent truncation tooltips which cause double speaking
-		self.check_list.InsertColumn(0, "Video Title", width=2000)
+		self.check_list.InsertColumn(0, _("Video Title"), width=2000)
 		
 		for i, item in enumerate(items):
 			self.check_list.InsertItem(i, item['title'])
@@ -33,8 +54,8 @@ class PlaylistSelectionDialog(wx.Dialog):
 		
 		# Buttons for Select All / None
 		hbox_sel = wx.BoxSizer(wx.HORIZONTAL)
-		btn_all = wx.Button(panel, label="Select All")
-		btn_none = wx.Button(panel, label="Select None")
+		btn_all = wx.Button(panel, label=_("Select All"))
+		btn_none = wx.Button(panel, label=_("Select None"))
 		btn_all.Bind(wx.EVT_BUTTON, self.on_all)
 		btn_none.Bind(wx.EVT_BUTTON, self.on_none)
 		hbox_sel.Add(btn_all, flag=wx.RIGHT, border=5)
@@ -43,8 +64,8 @@ class PlaylistSelectionDialog(wx.Dialog):
 		
 		# Main Buttons
 		hbox_btn = wx.BoxSizer(wx.HORIZONTAL)
-		btn_ok = wx.Button(panel, id=wx.ID_OK, label="Download Selected")
-		btn_cancel = wx.Button(panel, id=wx.ID_CANCEL, label="Cancel")
+		btn_ok = wx.Button(panel, id=wx.ID_OK, label=_("Download Selected"))
+		btn_cancel = wx.Button(panel, id=wx.ID_CANCEL, label=_("Cancel"))
 		hbox_btn.Add(btn_ok, flag=wx.RIGHT, border=10)
 		hbox_btn.Add(btn_cancel)
 		vbox.Add(hbox_btn, flag=wx.ALIGN_CENTER|wx.BOTTOM, border=10)
@@ -70,7 +91,7 @@ class PlaylistSelectionDialog(wx.Dialog):
 
 class DownloaderDialog(wx.Dialog):
 	def __init__(self, parent, plugin_instance, url=""):
-		super().__init__(parent, title="YouTube Downloader", size=(600, 650))
+		super().__init__(parent, title=_("YouTube Downloader"), size=(600, 650))
 		self.plugin = plugin_instance
 		self.Center()
 		self.Raise()
@@ -80,25 +101,33 @@ class DownloaderDialog(wx.Dialog):
 		vbox = wx.BoxSizer(wx.VERTICAL)
 		
 		# URL Input
-		lbl_url = wx.StaticText(panel, label="Enter YouTube video link or playlist link:")
+		lbl_url = wx.StaticText(panel, label=_("Enter YouTube video link or playlist link:"))
 		self.txt_url = wx.TextCtrl(panel, value=url)
-		self.txt_url.SetName("Enter YouTube video link or playlist link")
+		self.txt_url.SetName(_("Enter YouTube video link or playlist link"))
 		vbox.Add(lbl_url, flag=wx.LEFT|wx.TOP, border=10)
 		vbox.Add(self.txt_url, flag=wx.EXPAND|wx.LEFT|wx.RIGHT|wx.BOTTOM, border=10)
 		
-		# Format Selection
-		lbl_format = wx.StaticText(panel, label="Format:")
-		self.formats = ["MP3 (Audio)", "M4A (Audio)", "WAV (Audio)", "FLAC (Audio)", "OGG (Audio)", "MP4 (Video)"]
-		self.choice_format = wx.Choice(panel, choices=self.formats)
-		self.choice_format.SetName("Format")
+		# Format Selection: list of (value, translated label) pairs
+		self.formats = [
+			(FMT_MP3, _("MP3 (Audio)")),
+			(FMT_M4A, _("M4A (Audio)")),
+			(FMT_WAV, _("WAV (Audio)")),
+			(FMT_FLAC, _("FLAC (Audio)")),
+			(FMT_OGG, _("OGG (Audio)")),
+			(FMT_MP4, _("MP4 (Video)")),
+		]
+		lbl_format = wx.StaticText(panel, label=_("Format:"))
+		self.choice_format = wx.Choice(panel, choices=[label for _, label in self.formats])
+		self.choice_format.SetName(_("Format"))
 		
 		# Set last used format from config
 		last_format = config.conf["youtubeDownloader"]["lastFormat"]
 		try:
-			# Find index of last format
 			found = False
-			for i, fmt in enumerate(self.formats):
-				if last_format in fmt: # e.g. "MP3" in "MP3 (Audio)"
+			for i, (value, label) in enumerate(self.formats):
+				# Match either the machine value or a legacy stored label
+				# (e.g. "MP3") from older versions, case-insensitively.
+				if last_format == value or label.lower().startswith(last_format.lower()):
 					self.choice_format.SetSelection(i)
 					found = True
 					break
@@ -112,28 +141,28 @@ class DownloaderDialog(wx.Dialog):
 		vbox.Add(self.choice_format, flag=wx.EXPAND|wx.LEFT|wx.RIGHT|wx.BOTTOM, border=10)
 		
 		# Quality Selection
-		lbl_quality = wx.StaticText(panel, label="Quality:")
+		lbl_quality = wx.StaticText(panel, label=_("Quality:"))
 		self.choice_quality = wx.Choice(panel, choices=[])
-		self.choice_quality.SetName("Quality")
+		self.choice_quality.SetName(_("Quality"))
 		vbox.Add(lbl_quality, flag=wx.LEFT, border=10)
 		vbox.Add(self.choice_quality, flag=wx.EXPAND|wx.LEFT|wx.RIGHT|wx.BOTTOM, border=10)
 		
 		# Trimming (Start / End Time)
-		sb_trim = wx.StaticBox(panel, label="Trimming (Optional)")
+		sb_trim = wx.StaticBox(panel, label=_("Trimming (Optional)"))
 		sbs_trim = wx.StaticBoxSizer(sb_trim, wx.VERTICAL)
 		
-		lbl_trim_help = wx.StaticText(panel, label="Format: MM:SS (e.g. 1:30) or Seconds (e.g. 90)")
+		lbl_trim_help = wx.StaticText(panel, label=_("Format: MM:SS (e.g. 1:30) or seconds (e.g. 90)"))
 		sbs_trim.Add(lbl_trim_help, flag=wx.LEFT|wx.TOP|wx.BOTTOM, border=5)
 		
 		hbox_trim_inputs = wx.BoxSizer(wx.HORIZONTAL)
 		
-		lbl_start = wx.StaticText(panel, label="Start:")
+		lbl_start = wx.StaticText(panel, label=_("Start:"))
 		self.txt_start = wx.TextCtrl(panel, value="")
-		self.txt_start.SetName("Start Time") # Accessibility Label
+		self.txt_start.SetName(_("Start Time")) # Accessibility Label
 		
-		lbl_end = wx.StaticText(panel, label="End:")
+		lbl_end = wx.StaticText(panel, label=_("End:"))
 		self.txt_end = wx.TextCtrl(panel, value="")
-		self.txt_end.SetName("End Time") # Accessibility Label
+		self.txt_end.SetName(_("End Time")) # Accessibility Label
 		
 		hbox_trim_inputs.Add(lbl_start, flag=wx.ALIGN_CENTER_VERTICAL|wx.LEFT, border=5)
 		hbox_trim_inputs.Add(self.txt_start, proportion=1, flag=wx.EXPAND|wx.LEFT|wx.RIGHT, border=5)
@@ -144,21 +173,19 @@ class DownloaderDialog(wx.Dialog):
 		
 		vbox.Add(sbs_trim, flag=wx.EXPAND|wx.ALL, border=10)
 		
-		# SponsorBlock Checkbox - REVERTED (Moved to global settings)
-		
 		# Download Button
-		self.btn_download = wx.Button(panel, label="Add to Download Queue")
+		self.btn_download = wx.Button(panel, label=_("Add to Download Queue"))
 		self.btn_download.Bind(wx.EVT_BUTTON, self.on_download)
 		vbox.Add(self.btn_download, flag=wx.ALIGN_CENTER|wx.ALL, border=10)
 		
 		# Active Downloads Label
-		lbl_list = wx.StaticText(panel, label="Active Downloads:")
+		lbl_list = wx.StaticText(panel, label=_("Active Downloads:"))
 		vbox.Add(lbl_list, flag=wx.LEFT, border=10)
 		
 		# ListCtrl for Downloads
 		self.list_downloads = wx.ListCtrl(panel, style=wx.LC_REPORT | wx.LC_NO_HEADER | wx.LC_SINGLE_SEL)
-		self.list_downloads.SetName("Active Downloads List")
-		self.list_downloads.InsertColumn(0, "Download Status", width=550)
+		self.list_downloads.SetName(_("Active Downloads List"))
+		self.list_downloads.InsertColumn(0, _("Download Status"), width=550)
 		self.list_downloads.Bind(wx.EVT_LIST_ITEM_SELECTED, self.on_list_selection)
 		self.list_downloads.Bind(wx.EVT_LIST_ITEM_DESELECTED, self.on_list_selection)
 		
@@ -167,11 +194,11 @@ class DownloaderDialog(wx.Dialog):
 		# Contextual Buttons (Stop, Retry, Remove)
 		hbox_controls = wx.BoxSizer(wx.HORIZONTAL)
 		
-		self.btn_retry = wx.Button(panel, label="Retry")
+		self.btn_retry = wx.Button(panel, label=_("Retry"))
 		self.btn_retry.Bind(wx.EVT_BUTTON, self.on_retry)
 		self.btn_retry.Enable(False)
 		
-		self.btn_remove = wx.Button(panel, label="Remove")
+		self.btn_remove = wx.Button(panel, label=_("Remove"))
 		self.btn_remove.Bind(wx.EVT_BUTTON, self.on_remove)
 		self.btn_remove.Enable(False)
 		
@@ -188,7 +215,7 @@ class DownloaderDialog(wx.Dialog):
 		self.lbl_status = wx.StaticText(panel, label="")
 		vbox.Add(self.lbl_status, flag=wx.LEFT|wx.BOTTOM, border=10)
 		
-		self.btn_close = wx.Button(panel, id=wx.ID_CANCEL, label="Close")
+		self.btn_close = wx.Button(panel, id=wx.ID_CANCEL, label=_("Close"))
 		self.btn_close.Bind(wx.EVT_BUTTON, self.on_close)
 		vbox.Add(self.btn_close, flag=wx.ALIGN_CENTER|wx.BOTTOM, border=10)
 		
@@ -215,12 +242,20 @@ class DownloaderDialog(wx.Dialog):
 		self.list_map = [] # [d_id, d_id, ...]
 		
 		for d_id, data in self.plugin.downloads.items():
-			self.add_download_item(d_id, data['title'], data.get('status', ''))
+			title = data['title']
+			status = data.get('status', '')
+			# Stored statuses of running items already start with the title
+			# (e.g. "My Video - Downloading... 45%"); avoid showing it twice.
+			if not status or status.startswith(title):
+				display = status or title
+			else:
+				display = f"{title} - {status}"
+			self.add_download_item(d_id, display)
 			
 		self.update_button_states()
 			
-	def add_download_item(self, d_id, title, status="Starting..."):
-		idx = self.list_downloads.InsertItem(self.list_downloads.GetItemCount(), f"{title} - {status}")
+	def add_download_item(self, d_id, display_text):
+		self.list_downloads.InsertItem(self.list_downloads.GetItemCount(), display_text)
 		self.list_map.append(d_id)
 		
 	def remove_download_item(self, d_id):
@@ -316,27 +351,47 @@ class DownloaderDialog(wx.Dialog):
 		# Notify plugin that dialog is closed
 		self.plugin.dlg = None
 		self.Destroy()
+		
+	def get_selected_format(self):
+		"""Returns the machine-readable value of the selected format (e.g. 'mp3')."""
+		return self.formats[self.choice_format.GetSelection()][0]
 	
 	def on_format_change(self, event):
-		sel = self.choice_format.GetSelection()
-		fmt_str = self.formats[sel]
+		format_value = self.get_selected_format()
 		
-		choices = []
-		if "MP4" in fmt_str: # Video
-			choices = ["Best (Default)", "1080p", "720p", "480p", "360p"]
-		elif "WAV" in fmt_str or "FLAC" in fmt_str: # Lossless Audio
-			choices = ["Lossless (Default)"]
+		# Quality options: list of (value, translated label) pairs
+		qualities = []
+		if format_value == FMT_MP4: # Video
+			qualities = [
+				(Q_BEST, _("Best (Default)")),
+				("1080", _("1080p")),
+				("720", _("720p")),
+				("480", _("480p")),
+				("360", _("360p")),
+			]
+		elif format_value in (FMT_WAV, FMT_FLAC): # Lossless Audio
+			qualities = [(Q_BEST, _("Lossless (Default)"))]
 		else: # Lossy Audio (MP3, M4A, OGG)
-			choices = ["Best (Default)", "320 kbps", "256 kbps", "192 kbps", "128 kbps"]
+			qualities = [
+				(Q_BEST, _("Best (Default)")),
+				("320", _("320 kbps")),
+				("256", _("256 kbps")),
+				("192", _("192 kbps")),
+				("128", _("128 kbps")),
+			]
 			
-		self.choice_quality.Set(choices)
+		self.qualities = qualities
+		self.choice_quality.Set([label for _, label in qualities])
 		self.choice_quality.SetSelection(0)
 		
-		# Try to restore last quality if possible
+		# Try to restore last quality if possible. Older versions stored the
+		# translated label; only exact machine-value matches are honoured.
 		last_quality = config.conf["youtubeDownloader"]["lastQuality"]
 		try:
-			if last_quality in choices:
-				self.choice_quality.SetStringSelection(last_quality)
+			for i, (value, _) in enumerate(qualities):
+				if value == last_quality:
+					self.choice_quality.SetSelection(i)
+					break
 		except Exception:
 			pass
 
@@ -358,28 +413,23 @@ class DownloaderDialog(wx.Dialog):
 	def on_download(self, event):
 		url = self.txt_url.GetValue().strip()
 		if not url:
-			wx.MessageBox("Please provide a valid YouTube URL to proceed.", "Input Required", wx.OK | wx.ICON_WARNING)
+			wx.MessageBox(_("Please provide a valid YouTube URL to proceed."), _("Input Required"), wx.OK | wx.ICON_WARNING)
 			return
 			
 		if not self.is_valid_url(url):
-			wx.MessageBox("The URL provided does not appear to be a valid YouTube link.\nPlease check the URL and try again.", "Invalid URL", wx.OK | wx.ICON_ERROR)
+			wx.MessageBox(_("The URL provided does not appear to be a valid YouTube link.\nPlease check the URL and try again."), _("Invalid URL"), wx.OK | wx.ICON_ERROR)
 			return
 		
 		# Check for duplicates
 		if self.plugin.is_url_downloading(url):
-			wx.MessageBox("This URL is already being downloaded.", "Duplicate Download", wx.OK | wx.ICON_WARNING)
+			wx.MessageBox(_("This URL is already being downloaded."), _("Duplicate Download"), wx.OK | wx.ICON_WARNING)
 			return
 			
-		format_idx = self.choice_format.GetSelection()
-		format_str = self.formats[format_idx] # e.g. "MP3 (Audio)" or "MP4 (Video)"
-		is_audio = "Audio" in format_str
+		format_value = self.get_selected_format()
+		is_audio = format_value != FMT_MP4
+		audio_format = format_value if is_audio else FMT_MP3 # not used for video
 		
-		# Extract just the extension/name for logic (e.g. "mp3", "wav")
-		audio_format = format_str.split(" ")[0].lower() # "mp3", "wav", etc.
-		if audio_format == "mp4": audio_format = "mp3" # Fallback if video, though not used
-		
-		quality_str = self.choice_quality.GetStringSelection()
-
+		quality_value = self.qualities[self.choice_quality.GetSelection()][0]
 		
 		# Parse Time Input
 		start_time_raw = self.txt_start.GetValue().strip()
@@ -390,10 +440,10 @@ class DownloaderDialog(wx.Dialog):
 		
 		# Stop if parsing failed but input provided
 		if start_time_raw and start_time is None:
-			wx.MessageBox("Invalid Start Time format.\nPlease use MM:SS (e.g. 1:30) or Seconds (e.g. 90).", "Invalid Input", wx.OK | wx.ICON_ERROR)
+			wx.MessageBox(_("Invalid start time format.\nPlease use MM:SS (e.g. 1:30) or seconds (e.g. 90)."), _("Invalid Input"), wx.OK | wx.ICON_ERROR)
 			return
 		if end_time_raw and end_time is None:
-			wx.MessageBox("Invalid End Time format.\nPlease use MM:SS (e.g. 1:30) or Seconds (e.g. 90).", "Invalid Input", wx.OK | wx.ICON_ERROR)
+			wx.MessageBox(_("Invalid end time format.\nPlease use MM:SS (e.g. 1:30) or seconds (e.g. 90)."), _("Invalid Input"), wx.OK | wx.ICON_ERROR)
 			return
 			
 		# Logical check: Start < End
@@ -412,12 +462,12 @@ class DownloaderDialog(wx.Dialog):
 			e_sec = to_seconds(end_time)
 			
 			if s_sec >= e_sec:
-				wx.MessageBox("Start Time must be less than End Time.", "Invalid Range", wx.OK | wx.ICON_ERROR)
+				wx.MessageBox(_("Start time must be less than end time."), _("Invalid Range"), wx.OK | wx.ICON_ERROR)
 				return
-			
-		# Save just the main part e.g. "MP3" or "MP4" or "WAV"
-		config.conf["youtubeDownloader"]["lastFormat"] = format_str.split(" ")[0]
-		config.conf["youtubeDownloader"]["lastQuality"] = quality_str
+				
+		# Save user's selections for next time (machine-readable values only)
+		config.conf["youtubeDownloader"]["lastFormat"] = format_value
+		config.conf["youtubeDownloader"]["lastQuality"] = quality_value
 		
 		# Playlist Logic
 		playlist_mode = False
@@ -427,7 +477,7 @@ class DownloaderDialog(wx.Dialog):
 		if has_list:
 			if has_video:
 				# Ambiguous case: Video in Playlist
-				dlg = wx.MessageDialog(self, "This video is part of a playlist.\nDo you want to download the entire playlist?\n\nYes = Download Playlist\nNo = Download Video Only", "Playlist Detected", wx.YES_NO | wx.ICON_QUESTION)
+				dlg = wx.MessageDialog(self, _("This video is part of a playlist.\nDo you want to download the entire playlist?\n\nYes: download the whole playlist.\nNo: download only this video."), _("Playlist Detected"), wx.YES_NO | wx.ICON_QUESTION)
 				result = dlg.ShowModal()
 				dlg.Destroy()
 				if result == wx.ID_YES:
@@ -440,37 +490,37 @@ class DownloaderDialog(wx.Dialog):
 		
 		if playlist_mode:
 			# Advanced Playlist Flow
-			msg = "Please wait, getting videos for the playlist..."
+			msg = _("Please wait, getting videos for the playlist...")
 			self.lbl_status.SetLabel(msg)
 			ui.message(msg)
 			self.btn_download.Disable()
 			
 			# Run fetch in thread
-			threading.Thread(target=self._fetch_playlist_and_show_dialog, args=(url, is_audio, quality_str, audio_format)).start()
+			threading.Thread(target=self._fetch_playlist_and_show_dialog, args=(url, is_audio, quality_value, audio_format)).start()
 			return
 
-		self.lbl_status.SetLabel("Starting download...")
+		self.lbl_status.SetLabel(_("Starting download..."))
 		
 		# Delegate to plugin (Single Video)
-		self.plugin.start_download(url, is_audio, quality_str, start_time, end_time, playlist_mode=False, audio_format=audio_format)
+		self.plugin.start_download(url, is_audio, quality_value, start_time, end_time, playlist_mode=False, audio_format=audio_format)
 		
 		# Clear input and reset focus for next download
 		self.txt_url.SetValue("")
 		self.txt_url.SetFocus()
 
-	def _fetch_playlist_and_show_dialog(self, url, is_audio, quality_str, audio_format):
+	def _fetch_playlist_and_show_dialog(self, url, is_audio, quality_value, audio_format):
 		try:
 			info = downloader.get_playlist_info(url)
-			wx.CallAfter(self._show_playlist_dialog, info, url, is_audio, quality_str, audio_format)
+			wx.CallAfter(self._show_playlist_dialog, info, url, is_audio, quality_value, audio_format)
 		except Exception as e:
 			wx.CallAfter(self._on_playlist_fetch_error, str(e))
 			
 	def _on_playlist_fetch_error(self, error_msg):
 		self.btn_download.Enable()
-		self.lbl_status.SetLabel("Error fetching playlist.")
-		wx.MessageBox(f"Failed to fetch playlist info:\n{error_msg}", "Error", wx.OK | wx.ICON_ERROR)
+		self.lbl_status.SetLabel(_("Error fetching playlist."))
+		wx.MessageBox(_("Failed to fetch playlist info:\n%s") % error_msg, _("Error"), wx.OK | wx.ICON_ERROR)
 		
-	def _show_playlist_dialog(self, info, url, is_audio, quality_str, audio_format):
+	def _show_playlist_dialog(self, info, url, is_audio, quality_value, audio_format):
 		self.btn_download.Enable()
 		self.lbl_status.SetLabel("")
 		
@@ -479,13 +529,13 @@ class DownloaderDialog(wx.Dialog):
 			items = dlg.get_selected_items()
 			if items:
 				# Start a batch download for the selected videos.
-				self.plugin.start_batch_download(url, is_audio, quality_str, items, info['title'], audio_format=audio_format)
+				self.plugin.start_batch_download(url, is_audio, quality_value, items, info['title'], audio_format=audio_format)
 
 				# Clear input
 				self.txt_url.SetValue("")
 				self.txt_url.SetFocus()
 			else:
-				self.lbl_status.SetLabel("No videos selected.")
+				self.lbl_status.SetLabel(_("No videos selected."))
 		dlg.Destroy()
 
 	def parse_time_str(self, time_str):

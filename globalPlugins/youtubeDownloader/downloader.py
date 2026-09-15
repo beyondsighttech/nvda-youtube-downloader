@@ -18,12 +18,24 @@ except ImportError:
 	import logging
 	log = logging.getLogger("youtubeDownloader")
 
+# Translations: uses NVDA's translation system when running inside NVDA.
+try:
+	import addonHandler
+	addonHandler.initTranslation()
+except ImportError:
+	pass
+
 # Constants
 ADDON_DIR = os.path.dirname(os.path.abspath(__file__))
 BIN_DIR = os.path.join(ADDON_DIR, "bin")
 YT_DLP_URL = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe"
-# Using a lightweight static build of ffmpeg (essentials build)
-FFMPEG_ZIP_URL = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
+# Lightweight static FFmpeg builds. Tried in order: the gyan.dev essentials
+# build (the one ffmpeg.org links to) first, then the BtbN GitHub mirror as a
+# fallback if the primary host is unreachable.
+FFMPEG_SOURCES = [
+	"https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip",
+	"https://github.com/BtbN/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-win64-gpl.zip",
+]
 
 def ensure_bin_dir():
 	if not os.path.exists(BIN_DIR):
@@ -85,24 +97,24 @@ def check_dependencies(progress_hook=None):
 		if not os.path.exists(yt_dlp_path):
 			log.info("yt-dlp not found, downloading...")
 			if progress_hook:
-				progress_hook("Downloading yt-dlp...")
-			ui.message("Downloading yt-dlp, please wait...")
+				progress_hook(_("Downloading yt-dlp..."))
+			ui.message(_("Downloading yt-dlp, please wait..."))
 			_download_file(YT_DLP_URL, yt_dlp_path)
 
 		if not os.path.exists(ffmpeg_path) or not os.path.exists(ffprobe_path):
 			log.info("ffmpeg/ffprobe not found, downloading...")
 			if progress_hook:
-				progress_hook("Downloading FFmpeg...")
-			ui.message("Downloading FFmpeg, this may take a moment...")
-			_download_and_extract_ffmpeg()
+				progress_hook(_("Downloading FFmpeg..."))
+			ui.message(_("Downloading FFmpeg, this may take a moment..."))
+			_download_and_extract_ffmpeg_from_any_source()
 
 	# Final verification
 	if not os.path.exists(yt_dlp_path):
-		raise Exception("yt-dlp.exe could not be located or downloaded. Please check your internet connection.")
+		raise Exception(_("yt-dlp could not be located or downloaded. Please check your internet connection."))
 	if not os.path.exists(ffmpeg_path):
-		raise Exception("ffmpeg.exe could not be located or downloaded. It is required for conversion and merging.")
+		raise Exception(_("FFmpeg could not be located or downloaded. It is required for conversion and merging."))
 	if not os.path.exists(ffprobe_path):
-		raise Exception("ffprobe.exe could not be located or downloaded. It is required for metadata and format merging.")
+		raise Exception(_("ffprobe could not be located or downloaded. It is required for metadata and format merging."))
 
 	return yt_dlp_path, ffmpeg_path, ffprobe_path
 
@@ -130,15 +142,13 @@ def _download_file(url, dest_path):
 		raise
 
 
-def _download_and_extract_ffmpeg():
-	"""Downloads the FFmpeg essentials build and extracts ffmpeg.exe/ffprobe.exe
-	into the bin directory."""
-	ensure_bin_dir()
-	bin_dir = BIN_DIR
+def _download_and_extract_ffmpeg(url, bin_dir):
+	"""Downloads an FFmpeg zip archive from ``url`` and extracts ffmpeg.exe and
+	ffprobe.exe into ``bin_dir``. Raises on any failure."""
 	zip_tmp = os.path.join(bin_dir, "ffmpeg_download.tmp.zip")
 	try:
-		log.info(f"Downloading FFmpeg from {FFMPEG_ZIP_URL}")
-		_download_file(FFMPEG_ZIP_URL, zip_tmp)
+		log.info(f"Downloading FFmpeg from {url}")
+		_download_file(url, zip_tmp)
 
 		extracted = set()
 		with zipfile.ZipFile(zip_tmp) as zf:
@@ -160,6 +170,24 @@ def _download_and_extract_ffmpeg():
 				os.remove(zip_tmp)
 			except OSError:
 				pass
+
+
+def _download_and_extract_ffmpeg_from_any_source():
+	"""Ensures ffmpeg.exe/ffprobe.exe exist, trying every mirror in
+	FFMPEG_SOURCES until one succeeds."""
+	ensure_bin_dir()
+	bin_dir = BIN_DIR
+	last_error = None
+	for url in FFMPEG_SOURCES:
+		try:
+			_download_and_extract_ffmpeg(url, bin_dir)
+			return
+		except Exception as e:
+			log.error(f"FFmpeg download from {url} failed: {e}")
+			last_error = e
+	raise Exception(
+		_("Could not download FFmpeg from any known source. Please check your internet connection.")
+	) from last_error
 
 def cleanup_partial_files(output_path, title, filename=None):
 	"""
@@ -274,6 +302,23 @@ def get_playlist_info(url):
 	except Exception as e:
 		raise Exception(f"Failed to fetch playlist info: {str(e)}")
 
+def normalise_quality_value(quality_str):
+	"""Normalises a quality selection to a machine value: "best", or a digit
+	string (kbps for audio, vertical resolution for video). Accepts both the
+	current machine values ("320", "1080") and legacy 1.3.0 display labels
+	("320 kbps", "1080p", "Best (Default)", "Lossless (Default)")."""
+	if not quality_str:
+		return "best"
+	value = str(quality_str).strip().lower()
+	if "kbps" in value:
+		value = value.split()[0]
+	if value.endswith("p"):
+		value = value[:-1]
+	if value.isdigit():
+		return value
+	return "best"
+
+
 def download_video_with_process(url, output_path, is_audio, quality_str, start_time, end_time, progress_hook, playlist_mode=None, playlist_items=None, playlist_title=None, remove_sponsors=False, embed_metadata=True, download_subs=False, normalize_audio=False, audio_format="mp3"):
 	"""
 	Builds and starts a yt-dlp download as a subprocess, returning the Popen
@@ -283,8 +328,8 @@ def download_video_with_process(url, output_path, is_audio, quality_str, start_t
 	yt_dlp_path, ffmpeg_path, ffprobe_path = check_dependencies(progress_hook)
 	
 	if progress_hook:
-		progress_hook("Starting download...")
-		ui.message("Starting download...")
+		progress_hook(_("Starting download..."))
+		ui.message(_("Starting download..."))
 		
 	# Determine final output path template
 	# Truncate filename to 100 chars to avoid MAX_PATH issues
@@ -331,20 +376,20 @@ def download_video_with_process(url, output_path, is_audio, quality_str, start_t
 	elif playlist_mode is False:
 		cmd.append("--no-playlist")
 	
-	# Format selection
+	# Format selection. Quality values are machine-readable ("best" or digits);
+	# legacy display labels are normalised for users upgrading from 1.3.0.
+	quality_value = normalise_quality_value(quality_str)
 	if is_audio:
 		cmd.extend(["-x", "--audio-format", audio_format])
-		if quality_str and "kbps" in quality_str:
-			bitrate = quality_str.split(" ")[0]
-			cmd.extend(["--audio-quality", f"{bitrate}K"])
+		if quality_value != "best":
+			cmd.extend(["--audio-quality", f"{quality_value}K"])
 		else:
 			cmd.extend(["--audio-quality", "0"])
 	else:
 		cmd.extend(["--format", "bestvideo+bestaudio/best"])
 		cmd.extend(["--merge-output-format", "mp4"])
-		if quality_str and "p" in quality_str:
-			res = quality_str.replace("p", "")
-			cmd.extend(["-S", f"res:{res}"])
+		if quality_value != "best":
+			cmd.extend(["-S", f"res:{quality_value}"])
 
 	# Trimming (Only valid for single video or if applied to all, usually disabled for playlist)
 	if start_time and end_time and not playlist_mode:

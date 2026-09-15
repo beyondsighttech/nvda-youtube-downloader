@@ -487,7 +487,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		
 		# Update UI immediately
 		if self.dlg:
-			self.dlg.add_download_item(d_id, self.downloads[d_id]['title'])
+			self.dlg.add_download_item(d_id, f"{initial_title} - Queued")
 		
 		self.download_queue.append(d_id)
 		self._process_queue()
@@ -664,7 +664,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				self.downloads[d_id]['status'] = "Completed"
 				self._update_ui_status(d_id, f"{title} - Completed", 100)
 				import ui
-				ui.message(f"Download complete: {title}")
+				ui.message(_("Download complete: %s") % title)
 				self.save_state()
 			else:
 				error_details = "\n".join(last_lines)
