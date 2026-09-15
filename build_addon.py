@@ -129,13 +129,16 @@ def build_addon_package():
     output_filename = os.path.join(DIST_DIR, f"youtubeDownloader-{version}.nvda-addon")
 
     print(f"Creating package: {output_filename}")
-    with zipfile.ZipFile(output_filename, "w", zipfile.ZIP_DEFLATED) as addon_zip:
+    # ZIP_STORED (no compression) so the output is byte-identical across
+    # platforms: deflate streams differ between zlib builds, which would
+    # break SHA-256 verification. The package is small plain text anyway.
+    with zipfile.ZipFile(output_filename, "w", zipfile.ZIP_STORED) as addon_zip:
         for file_path, arcname in iter_addon_files():
             info = zipfile.ZipInfo(arcname, date_time=FIXED_ZIP_TIME)
             # 0o644 == rw-r--r-- : fixed permission bits for reproducibility.
             info.external_attr = 0o644 << 16
             with open(file_path, "rb") as src:
-                addon_zip.writestr(info, src.read(), zipfile.ZIP_DEFLATED)
+                addon_zip.writestr(info, src.read(), zipfile.ZIP_STORED)
 
     package_files = [arcname for _, arcname in iter_addon_files()]
     print(f"Packaged {len(package_files)} file(s):")
